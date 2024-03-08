@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 	"path/filepath"
+	"strings"
+	"time"
+
 	"github.com/alexeyco/simpletable"
 )
 
@@ -17,40 +19,65 @@ type item struct {
 	UpdatedAt time.Time
 }
 
+func (i *item) UpdateStatus(status string) {
+	i.Status = status
+	i.UpdatedAt = time.Now()
+}
+
+func (i item) Is(status string) bool {
+	return strings.ToLower(status) == strings.ToLower(i.Status)
+}
+
+const DateTimeFormat = "January _2 2006, 15:04"
+
+func (i item) ToRow(index int) []*simpletable.Cell {
+	task := blue(i.Task)
+	status := blue(i.Status)
+	if i.Is("Done") {
+		task = green(fmt.Sprintf("\u2705 %s", i.Task))
+		status = green(i.Status)
+	}
+	updatedAt := ""
+	if !i.UpdatedAt.IsZero() {
+		updatedAt = i.UpdatedAt.Format(DateTimeFormat)
+	}
+	return []*simpletable.Cell{
+		{Text: fmt.Sprintf("%d", index)},
+		{Text: task},
+		{Text: status},
+		{Text: i.CreatedAt.Format(DateTimeFormat)},
+		{Text: updatedAt},
+	}
+}
+
 type Todos []item
 
-const (
-	todoFileName = ".godo.json"
-)
+const todoFileName = ".godo.json"
 
 func getAbsolutePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
+
 	return filepath.Join(home, todoFileName), nil
 }
 
-
-
 func (t *Todos) Add(task string) {
-	todo := item{
+	*t = append(*t, item{
 		Task:      task,
-		Status:    "Ongoing",
+		Status:    "TODO",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Time{},
-	}
-
-	*t = append(*t, todo)
+	})
 }
 
 func (t *Todos) UpdateStatus(taskId int, status string) error {
 	if taskId <= 0 || taskId > len(*t) {
 		return errors.New("invalid index")
 	}
-	list := *t
-	list[taskId-1].UpdatedAt = time.Now()
-	list[taskId-1].Status = status
+
+	(*t)[taskId-1].UpdateStatus(status)
 	return nil
 }
 
@@ -58,32 +85,33 @@ func (t *Todos) Delete(taskId int) error {
 	if taskId <= 0 || taskId > len(*t) {
 		return errors.New("invalid index")
 	}
-	list := *t
-	*t = append(list[:(taskId-1)], list[taskId:]...)
+
+	*t = append((*t)[:(taskId-1)], (*t)[taskId:]...)
 	return nil
 }
 
-func (t *Todos) Load() error {
+func Load() (*Todos, error) {
+	var todos Todos
+
 	fileName, err := getAbsolutePath()
 	if err != nil {
-		return err
+		return &todos, err
 	}
 
 	file, err := os.ReadFile(fileName)
+	switch {
+	case errors.Is(err, os.ErrNotExist), len(file) == 0:
+		return &todos, nil
+	case err != nil:
+		return &todos, err
+	}
+
+	err = json.Unmarshal(file, &todos)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
+		return &todos, err
 	}
-	if len(file) == 0 {
-		return nil
-	}
-	err = json.Unmarshal(file, t)
-	if err != nil {
-		return err
-	}
-	return nil
+
+	return &todos, nil
 }
 
 func (t *Todos) Store() error {
@@ -92,16 +120,16 @@ func (t *Todos) Store() error {
 		return err
 	}
 
-	data, err := json.Marshal(t)
+	data, err := json.MarshalIndent(t, "", "  ")
 	if err != nil {
 		return err
 	}
+
 	return os.WriteFile(fileName, data, 0644)
 }
 
-func (t *Todos) PrintTodos() {
-	table := simpletable.New()
-	table.Header = &simpletable.Header{
+func (t *Todos) header() *simpletable.Header {
+	return &simpletable.Header{
 		Cells: []*simpletable.Cell{
 			{Align: simpletable.AlignCenter, Text: "#"},
 			{Align: simpletable.AlignCenter, Text: "Todo"},
@@ -110,78 +138,55 @@ func (t *Todos) PrintTodos() {
 			{Align: simpletable.AlignCenter, Text: "Updated"},
 		},
 	}
-	var cells [][]*simpletable.Cell
+}
 
+func (t *Todos) Print() {
+	var rows [][]*simpletable.Cell
 	for idx, item := range *t {
 		idx++
-		task := blue(item.Task)
-		status := blue(item.Status)
-		if item.Status == "Done" {
-			task = green(fmt.Sprintf("\u2705 %s", item.Task))
-			status = green(item.Status)
-		}
-		cells = append(cells, []*simpletable.Cell{
-			{Text: fmt.Sprintf("%d", idx)},
-			{Text: task},
-			{Text: status},
-			{Text: item.CreatedAt.Format(time.RFC822)},
-			{Text: item.UpdatedAt.Format(time.RFC822)},
-		})
+		rows = append(rows, item.ToRow(idx))
 	}
 
-	table.Body = &simpletable.Body{Cells: cells}
-
-	table.Footer = &simpletable.Footer{Cells: []*simpletable.Cell{
-		{Align: simpletable.AlignCenter, Span: 5, Text: red(fmt.Sprintf("You have %d pending todos.", t.CountPending()))},
-	}}
+	table := simpletable.Table{
+		Header: t.header(),
+		Body:   &simpletable.Body{Cells: rows},
+		Footer: &simpletable.Footer{
+			Cells: []*simpletable.Cell{
+				{
+					Align: simpletable.AlignCenter,
+					Span:  5,
+					Text:  red(fmt.Sprintf("You have %d pending todos.", t.CountPending())),
+				},
+			},
+		},
+	}
 
 	table.SetStyle(simpletable.StyleUnicode)
-
 	table.Println()
 }
 
 func (t *Todos) PrintTodo(id int) {
-	table := simpletable.New()
-	table.Header = &simpletable.Header{
-		Cells: []*simpletable.Cell{
-			{Align: simpletable.AlignCenter, Text: "#"},
-			{Align: simpletable.AlignCenter, Text: "Todo"},
-			{Align: simpletable.AlignCenter, Text: "Status"},
-			{Align: simpletable.AlignCenter, Text: "Created"},
-			{Align: simpletable.AlignCenter, Text: "Updated"},
-		},
-	}
-	var cells [][]*simpletable.Cell
-
+	var rows [][]*simpletable.Cell
 	for idx, item := range *t {
 		idx++
 		if idx == id {
-			task := blue(item.Task)
-			status := blue(item.Status)
-			if item.Status == "Done" {
-				task = green(fmt.Sprintf("\u2705 %s", item.Task))
-				status = green(item.Status)
-			}
-			cells = append(cells, []*simpletable.Cell{
-				{Text: fmt.Sprintf("%d", idx)},
-				{Text: task},
-				{Text: status},
-				{Text: item.CreatedAt.Format(time.RFC822)},
-				{Text: item.UpdatedAt.Format(time.RFC822)},
-			})
+			rows = append(rows, item.ToRow(idx))
 		}
 	}
 
-	table.Body = &simpletable.Body{Cells: cells}
-	table.SetStyle(simpletable.StyleUnicode)
+	table := simpletable.Table{
+		Header: t.header(),
+		Body:   &simpletable.Body{Cells: rows},
+	}
 
+	table.SetStyle(simpletable.StyleUnicode)
 	table.Println()
 }
 
 func (t *Todos) CountPending() int {
 	count := 0
 	for _, item := range *t {
-		if item.Status != "Done" {
+		if !item.Is("Done") {
 			count++
 		}
 	}
