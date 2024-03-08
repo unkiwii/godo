@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	todo "github.com/ritikdhasmana/godo"
+	"github.com/unkiwii/godo"
 )
 
 const usage = `
@@ -54,7 +54,7 @@ func main() {
 	flag.Usage = func() { fmt.Print(usage) }
 	flag.Parse()
 
-	todos := must2(todo.Load)
+	todos := must2(godo.Load)
 
 	switch {
 	case *add:

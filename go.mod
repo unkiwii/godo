@@ -1,4 +1,4 @@
-module github.com/ritikdhasmana/godo
+module github.com/unkiwii/godo
 
 go 1.21.4
 

@@ -1,4 +1,4 @@
-package todo
+package godo
 
 import (
 	"encoding/json"
