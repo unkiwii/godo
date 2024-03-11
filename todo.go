@@ -31,12 +31,20 @@ func (i item) Is(status string) bool {
 const DateTimeFormat = "January _2 2006, 15:04"
 
 func (i item) ToRow(index int) []*simpletable.Cell {
-	task := blue(i.Task)
-	status := blue(i.Status)
-	if i.Is("Done") {
-		task = green(fmt.Sprintf("\u2705 %s", i.Task))
-		status = green(strings.ToUpper(i.Status))
+	color := blue
+	task := i.Task
+	status := strings.ToUpper(i.Status)
+	switch {
+	case i.Is("done"):
+		color = green
+		task = fmt.Sprintf("\u2705 %s", i.Task)
+	case i.Is("wip"):
+		color = yellow
+	default:
+		task = i.Task
 	}
+	task = color(task)
+	status = color(status)
 	updatedAt := ""
 	if !i.UpdatedAt.IsZero() {
 		updatedAt = i.UpdatedAt.Format(DateTimeFormat)
