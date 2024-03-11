@@ -20,12 +20,12 @@ type item struct {
 }
 
 func (i *item) UpdateStatus(status string) {
-	i.Status = status
+	i.Status = strings.ToUpper(status)
 	i.UpdatedAt = time.Now()
 }
 
 func (i item) Is(status string) bool {
-	return strings.ToLower(status) == strings.ToLower(i.Status)
+	return strings.ToUpper(status) == strings.ToUpper(i.Status)
 }
 
 const DateTimeFormat = "January _2 2006, 15:04"
@@ -35,7 +35,7 @@ func (i item) ToRow(index int) []*simpletable.Cell {
 	status := blue(i.Status)
 	if i.Is("Done") {
 		task = green(fmt.Sprintf("\u2705 %s", i.Task))
-		status = green(i.Status)
+		status = green(strings.ToUpper(i.Status))
 	}
 	updatedAt := ""
 	if !i.UpdatedAt.IsZero() {
