@@ -88,7 +88,8 @@ func main() {
 
 	default:
 		fmt.Fprintln(os.Stdout, "Invalid command! Type `godo --help` to see all available commands.")
-		os.Exit(0)
+		flag.Usage()
+		os.Exit(1)
 	}
 }
 
